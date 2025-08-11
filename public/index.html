@@ -26,25 +26,33 @@
             box-sizing: border-box;
         }
 
-        #resetCameraBtn {
+        #resetCameraBtn,
+        #fileInput {
             position: fixed;
             bottom: 10px;
             right: 10px;
-
             background: white;
             border: 1px solid #ccc;
             border-radius: 5px;
             padding: 5px 10px;
             cursor: pointer;
+            color: black;
+        }
+
+        #fileInput {
+            right: auto;
+            left: 10px;
         }
     </style>
 </head>
 
 <body>
+    <input type="file" id="fileInput" accept=".json">
     <button id="resetCameraBtn">Reset Camera</button>
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
         let scene, camera, renderer, controls;
 
@@ -54,12 +62,7 @@
         function initScene() {
             scene = new THREE.Scene();
 
-            camera = new THREE.PerspectiveCamera(
-                75,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000
-            );
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.copy(initialCameraPosition);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -92,14 +95,8 @@
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
-            ctx.clearRect(0, 0, textWidth, fontSize);
             ctx.fillText(text, textWidth / 2, fontSize / 2);
-
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.minFilter = THREE.LinearFilter;
-            texture.needsUpdate = true;
-
-            return texture;
+            return new THREE.CanvasTexture(canvas);
         }
 
         function createGraph(nodes, edges) {
@@ -108,27 +105,20 @@
             const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
 
             nodes.forEach(node => {
-                // create sphere
                 const sphere = new THREE.Mesh(sphereGeo, sphereMat);
                 sphere.position.copy(node.pos);
                 scene.add(sphere);
 
-                // label
                 const texture = createTextTexture(node.name);
-                const labelMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
-                const label = new THREE.Sprite(labelMat);
-
-                label.position.copy(node.pos);
-                label.position.y += 0.4;
+                const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+                label.position.copy(node.pos).add(new THREE.Vector3(0, 0.4, 0));
                 label.scale.set(texture.image.width / 100, texture.image.height / 100, 1);
                 scene.add(label);
             });
 
             edges.forEach(([a, b]) => {
-                const points = [nodes[a].pos, nodes[b].pos];
-                const edgeGeo = new THREE.BufferGeometry().setFromPoints(points);
-                const line = new THREE.Line(edgeGeo, edgeMat);
-                scene.add(line);
+                const edgeGeo = new THREE.BufferGeometry().setFromPoints([nodes[a].pos, nodes[b].pos]);
+                scene.add(new THREE.Line(edgeGeo, edgeMat));
             });
         }
 
@@ -164,36 +154,57 @@
             requestAnimationFrame(animate);
         }
 
-        function generateRandomGraph(numNodes = 100) {
-            const nodes = [];
-            for (let i = 0; i < numNodes; i++) {
-                nodes.push({
-                    id: i,
-                    name: i.toString(),
-                    pos: new THREE.Vector3(
-                        (Math.random() - 0.5) * 100,  // x from -10 to 10
-                        (Math.random() - 0.5) * 100,  // y from -10 to 10
-                        (Math.random() - 0.5) * 100   // z from -10 to 10
-                    )
-                });
-            }
-
+        function parseFriendsGraph(data) {
+            const nodeMap = new Map();
             const edges = [];
-            for (let i = 1; i < numNodes; i++) {
-                const connectTo = Math.floor(Math.random() * i);
-                edges.push([i, connectTo]);
-            }
 
-            return { nodes, edges };
+            (function traverse(person) {
+                nodeMap.set(person.id, { id: person.id, name: person.name });
+                person.friends.forEach(f => {
+                    nodeMap.set(f.id, { id: f.id, name: f.name });
+                    edges.push({ source: person.id, target: f.id });
+                    traverse(f);
+                });
+            })(data);
+
+            const nodes = Array.from(nodeMap.values());
+
+            d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(edges).id(d => d.id).distance(25).strength(1))
+                .force("charge", d3.forceManyBody().strength(-80))
+                .force("collide", d3.forceCollide(0.4))
+                .force("center", d3.forceCenter(0, 0))
+                .stop()
+                .tick(300);
+
+            const scale = 0.1;
+            nodes.forEach(n => n.pos = new THREE.Vector3(n.x * scale, n.y * scale, (Math.random() - 0.5) * 5));
+
+            const idToIndex = new Map(nodes.map((n, i) => [n.id, i]));
+            const indexedEdges = edges.map(e => [
+                idToIndex.get(e.source.id ?? e.source),
+                idToIndex.get(e.target.id ?? e.target)
+            ]);
+
+            return { nodes, edges: indexedEdges };
         }
 
+        // File handler
+        document.getElementById('fileInput').addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                const { nodes, edges } = parseFriendsGraph(JSON.parse(ev.target.result));
+                scene.clear();
+                scene.add(new THREE.AxesHelper(0.2));
+                createGraph(nodes, edges);
+            };
+            reader.readAsText(file);
+        });
 
         initScene();
-        const { nodes, edges } = generateRandomGraph();
-        createGraph(nodes, edges);
         animate();
-
-
         document.getElementById('resetCameraBtn').addEventListener('click', resetCamera);
     </script>
 </body>

@@ -16,158 +16,112 @@ PASSWORD = "watdapak234_"
 driver = webdriver.Firefox()
 wait = WebDriverWait(driver, 16)
 
-driver.get("https://elms.sti.edu/")
-
-wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Log in"))).click()
-wait.until(EC.element_to_be_clickable((By.ID, "office365_sso_btn"))).click()
-
-# microsoft login
-# email
-wait.until(EC.element_to_be_clickable((By.ID, "i0116"))).send_keys(EMAIL)
-wait.until(EC.element_to_be_clickable((By.ID, "idSIButton9"))).click()
-
-# password
-wait.until(EC.element_to_be_clickable((By.ID, "i0118"))).send_keys(PASSWORD)
-time.sleep(1)
-wait.until(EC.element_to_be_clickable((By.ID, "idSIButton9"))).click()
-
-# cases of MFA throwing error
-try:
-    approve_div = WebDriverWait(driver, 16).until(
-        EC.element_to_be_clickable(
-            (By.XPATH, "//div[@class='table' and @data-value='PhoneAppNotification']")
-        )
-    )
-    approve_div.click()
-except:
-    pass
-
-# case of that annoying elms.sti.edu stay log in prompt
-try:
-    yes_button = WebDriverWait(driver, 16).until(
-        EC.element_to_be_clickable((By.ID, "idSIButton9"))
-    )
-    yes_button.click()
-except:
-    pass
-
-WebDriverWait(driver, 60).until(EC.url_contains("/user_dashboard"))
-
-print("Logged in successfully")
-
-# do some magic here
-
-session = requests.Session()
-for cookie in driver.get_cookies():
-    domain = cookie.get("domain") or urlparse(driver.current_url).netloc
-    session.cookies.set(cookie["name"], cookie["value"], domain=domain)
-
-base_url = "https://elms.sti.edu/user/show/"
+base_url = "https://elms.sti.edu"
 json_filename = "users_data.json"
 
-# load existing json data
-if os.path.exists(json_filename):
-    with open(json_filename, "r", encoding="utf-8") as f:
-        all_results = json.load(f)
-    if all_results:
-        last_user_id = int(all_results[-1]["user_id"])
-        start_id = max(0, last_user_id + 1)
-    else:
-        all_results = []
-        start_id = 0
-else:
-    all_results = []
-    start_id = 0
-
-start_id = 0
-end_id = 99999999
-
-chunk_size = 100
-max_threads = 16
+user_names = {}
 
 
-def scrape_chunk(start, end, chunk_idx):
-    results = []
-    for user_id in range(start, end + 1):
-        user_str = str(user_id).zfill(8)
-        profile_url = base_url + user_str
+def login():
+    driver.get(base_url)
 
-        try:
-            response = session.get(profile_url)
-        except Exception as e:
-            print(f"[Chunk {chunk_idx}] Request failed for {user_str}: {e}")
-            continue
+    wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Log in"))).click()
+    wait.until(EC.element_to_be_clickable((By.ID, "office365_sso_btn"))).click()
 
-        user_data = {
-            "user_id": user_str,
-            "name": None,
-            "campus": None,
-            "about": None,
-            "friends": [],
-            "status": "not_found",
-        }
+    # microsoft login
+    # email
+    wait.until(EC.element_to_be_clickable((By.ID, "i0116"))).send_keys(EMAIL)
+    wait.until(EC.element_to_be_clickable((By.ID, "idSIButton9"))).click()
 
-        if "user_not_found" in response.url or response.status_code != 200:
-            print(f"[Chunk {chunk_idx}] User {user_str} not found.")
-            results.append(user_data)
-        else:
-            soup = BeautifulSoup(response.text, "html.parser")
+    # password
+    wait.until(EC.element_to_be_clickable((By.ID, "i0118"))).send_keys(PASSWORD)
+    time.sleep(1)
+    wait.until(EC.element_to_be_clickable((By.ID, "idSIButton9"))).click()
 
-            name_tag = soup.find("h1", class_="profile_name")
-            name = name_tag.get_text(strip=True) if name_tag else None
+    # cases of MFA throwing error
+    try:
+        approve_div = WebDriverWait(driver, 16).until(
+            EC.element_to_be_clickable(
+                (
+                    By.XPATH,
+                    "//div[@class='table' and @data-value='PhoneAppNotification']",
+                )
+            )
+        )
+        approve_div.click()
+    except:
+        pass
 
-            campus_tag = soup.select_one("div.profile_info a")
-            campus = campus_tag.get_text(strip=True) if campus_tag else None
+    # case of that annoying elms.sti.edu stay log in prompt
+    try:
+        yes_button = WebDriverWait(driver, 16).until(
+            EC.element_to_be_clickable((By.ID, "idSIButton9"))
+        )
+        yes_button.click()
+    except:
+        pass
 
-            about_section = None
-            for block in soup.select("div.block"):
-                h2 = block.find("h2")
-                if h2 and h2.get_text(strip=True) == "About":
-                    about_p = block.find("p")
-                    about_section = about_p.get_text(strip=True) if about_p else None
-                    break
-            about = about_section if about_section else None
+    WebDriverWait(driver, 60).until(EC.url_contains("/user_dashboard"))
 
-            friends = []
-            for friend_name in soup.select("ul.largeImgs li a span"):
-                friends.append(friend_name.get_text(strip=True))
-
-            user_data = {
-                "user_id": user_str,
-                "name": name,
-                "campus": campus,
-                "about": about,
-                "friends": friends,
-                "status": "found",
-            }
-            print(f"[Chunk {chunk_idx}] Found user {user_str}: {name}")
-            results.append(user_data)
-
-        time.sleep(0.2)
-
-    chunk_filename = (
-        f"users_data_part_{chunk_idx}_{str(start).zfill(8)}_{str(end).zfill(8)}.json"
-    )
-    with open(chunk_filename, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2, ensure_ascii=False)
+    print("Logged in successfully")
 
 
-chunks = []
-for i, start in enumerate(range(start_id, end_id + 1, chunk_size)):
-    chunk_end = min(start + chunk_size - 1, end_id)
-    chunks.append((start, chunk_end, i))
+def save_user_data(user_data):
+    with open(json_filename, "w") as f:
+        json.dump(user_data, f, indent=4)
 
-try:
-    with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        futures = []
-        for start, end, idx in chunks:
-            futures.append(executor.submit(scrape_chunk, start, end, idx))
 
-        for f in futures:
-            f.result()
+def get_user_data(user_id, session):
+    if user_id in user_names:
+        return {"id": user_id, "name": user_names[user_id], "friends": []}
 
-except KeyboardInterrupt:
-    print("KeyboardInterrupt")
+    url = f"{base_url}/user/show/{user_id}"
+    try:
+        response = session.get(url)
+        if response.status_code != 200:
+            print(f"Failed to fetch user data for user_id: {user_id}")
+            return {"id": user_id, "name": None, "friends": []}
+    except Exception as e:
+        print(e)
+        return {"id": user_id, "name": None, "friends": []}
 
-finally:
-    driver.quit()
+    soup = BeautifulSoup(response.text, "html.parser")
+    name_tag = soup.find("h1", class_="profile_name")
+    name = name_tag.get_text(strip=True) if name_tag else None
+
+    user_names[user_id] = name
+
+    friends = []
+    friend_elements = soup.select("ul.largeImgs li a")
+    for friend in friend_elements:
+        href = friend.get("href", "")
+        if "/user/show/" in href:
+            fid = href.split("/")[-1]
+            fname_tag = friend.find("span")
+            fname = fname_tag.get_text(strip=True) if fname_tag else None
+
+            if fid in user_names:
+                friends.append({"id": fid, "name": user_names[fid], "friends": []})
+            else:
+                time.sleep(0.5)
+                data = get_user_data(fid, session)
+                friends.append(data)
+
+    return {"id": user_id, "name": name, "friends": friends}
+
+
+def main():
+    login()
+
+    session = requests.Session()
+    for cookie in driver.get_cookies():
+        domain = cookie.get("domain") or urlparse(driver.current_url).netloc
+        session.cookies.set(cookie["name"], cookie["value"], domain=domain)
+
+    start_user_id = "11553731"
+    tree = get_user_data(start_user_id, session)
+    save_user_data(tree)
+
+
+if __name__ == "__main__":
+    main()
