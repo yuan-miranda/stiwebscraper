@@ -7,8 +7,7 @@ import requests
 from urllib.parse import urlparse
 import time
 import json
-import os
-from concurrent.futures import ThreadPoolExecutor
+from collections import deque
 
 EMAIL = "miranda.339829@baliuag.sti.edu.ph"
 PASSWORD = "watdapak234_"
@@ -17,9 +16,11 @@ driver = webdriver.Firefox()
 wait = WebDriverWait(driver, 16)
 
 base_url = "https://elms.sti.edu"
+start_id = "11553731"
 json_filename = "users_data.json"
 
-user_names = {}
+names = {}
+nodes = {}
 
 
 def login():
@@ -62,66 +63,95 @@ def login():
         pass
 
     WebDriverWait(driver, 60).until(EC.url_contains("/user_dashboard"))
-
     print("Logged in successfully")
-
-
-def save_user_data(user_data):
-    with open(json_filename, "w") as f:
-        json.dump(user_data, f, indent=4)
-
-
-def get_user_data(user_id, session):
-    if user_id in user_names:
-        return {"id": user_id, "name": user_names[user_id], "friends": []}
-
-    url = f"{base_url}/user/show/{user_id}"
-    try:
-        response = session.get(url)
-        if response.status_code != 200:
-            print(f"Failed to fetch user data for user_id: {user_id}")
-            return {"id": user_id, "name": None, "friends": []}
-    except Exception as e:
-        print(e)
-        return {"id": user_id, "name": None, "friends": []}
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    name_tag = soup.find("h1", class_="profile_name")
-    name = name_tag.get_text(strip=True) if name_tag else None
-
-    user_names[user_id] = name
-
-    friends = []
-    friend_elements = soup.select("ul.largeImgs li a")
-    for friend in friend_elements:
-        href = friend.get("href", "")
-        if "/user/show/" in href:
-            fid = href.split("/")[-1]
-            fname_tag = friend.find("span")
-            fname = fname_tag.get_text(strip=True) if fname_tag else None
-
-            if fid in user_names:
-                friends.append({"id": fid, "name": user_names[fid], "friends": []})
-            else:
-                time.sleep(0.5)
-                data = get_user_data(fid, session)
-                friends.append(data)
-
-    return {"id": user_id, "name": name, "friends": friends}
-
-
-def main():
-    login()
 
     session = requests.Session()
     for cookie in driver.get_cookies():
         domain = cookie.get("domain") or urlparse(driver.current_url).netloc
         session.cookies.set(cookie["name"], cookie["value"], domain=domain)
 
-    start_user_id = "11553731"
-    tree = get_user_data(start_user_id, session)
-    save_user_data(tree)
+    return session
+
+
+def save_user_data(user_data):
+    try:
+        with open(json_filename, "w") as f:
+            json.dump(user_data, f, indent=1)
+    except Exception as e:
+        print(f"Error saving user data: {e}")
+
+
+def get_user_data_bfs(start_id, session):
+    global nodes
+    names.clear()  # clear previous names if needed
+    nodes = {"id": start_id, "name": None, "friends": []}
+
+    # queue items are tuples: (user_id, node_in_tree)
+    queue = deque()
+    queue.append((start_id, nodes))
+
+    while queue:
+        user_id, parent_node = queue.popleft()
+
+        # skip visited
+        if user_id in names:
+            continue
+
+        url = f"{base_url}/user/show/{user_id}"
+        try:
+            response = session.get(url)
+            if response.status_code != 200:
+                print(f"Failed to fetch user data for id: {user_id}")
+                names[user_id] = None
+                continue
+        except Exception as e:
+            print(e)
+            names[user_id] = None
+            continue
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        name_tag = soup.find("h1", class_="profile_name")
+        name = name_tag.get_text(strip=True) if name_tag else None
+
+        names[user_id] = name
+        parent_node["name"] = name
+
+        # process friends
+        friend_elements = soup.select("ul.largeImgs li a")
+        for friend in friend_elements:
+            href = friend.get("href", "")
+            fname_tag = friend.find("span")
+            fname = fname_tag.get_text(strip=True) if fname_tag else None
+
+            if "/user/show/" in href:
+                fid = href.split("/")[-1]
+                if fid not in names:
+                    friend_node = {"id": fid, "name": fname, "friends": []}
+                    parent_node["friends"].append(friend_node)
+                    queue.append((fid, friend_node))
+
+        # save after each user, just like your recursive version
+        save_user_data(nodes)
+
+        # small delay to avoid hammering the server
+        time.sleep(0.2)
+
+    return nodes
+
+
+def main():
+    session = login()
+
+    start_time = time.time()
+    get_user_data_bfs(start_id, session)
+    save_user_data(nodes)
+
+    print(f"Elapsed time: {time.time() - start_time:.2f} seconds")
 
 
 if __name__ == "__main__":
     main()
+
+# 10704810 LONGASF
+# 11553731 PIA
+# 11631750

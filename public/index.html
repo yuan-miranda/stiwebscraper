@@ -4,44 +4,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Triangle</title>
-    <script>
-        const THREE_VERSION = "0.179.1";
-        const importMap = {
-            "imports": {
-                "three": `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/build/three.module.js`,
-                "three/addons/": `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/examples/jsm/`
-            }
-        };
-
-        document.head.appendChild(Object.assign(document.createElement('script'), {
-            type: 'importmap',
-            textContent: JSON.stringify(importMap)
-        }));
-    </script>
+    <title>STI F-line with 3D Force Graph</title>
     <style>
-        * {
+        body {
             margin: 0;
-            padding: 0;
-            box-sizing: border-box;
         }
 
-        #resetCameraBtn,
-        #fileInput {
+        #3d-graph {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        #fileInput,
+        #resetCameraBtn {
             position: fixed;
             bottom: 10px;
-            right: 10px;
-            background: white;
-            border: 1px solid #ccc;
-            border-radius: 5px;
             padding: 5px 10px;
+            border-radius: 5px;
+            background: #fff;
+            border: 1px solid #ccc;
             cursor: pointer;
-            color: black;
+            z-index: 1;
         }
 
         #fileInput {
-            right: auto;
             left: 10px;
+        }
+
+        #resetCameraBtn {
+            right: 10px;
         }
     </style>
 </head>
@@ -49,163 +41,54 @@
 <body>
     <input type="file" id="fileInput" accept=".json">
     <button id="resetCameraBtn">Reset Camera</button>
-    <script type="module">
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+    <div id="3d-graph"></div>
 
-        let scene, camera, renderer, controls;
+    <script src="https://cdn.jsdelivr.net/npm/3d-force-graph"></script>
+    <script>
+        const Graph = ForceGraph3D()(document.getElementById('3d-graph'))
+            .nodeColor(node => node.name ? 'white' : 'red')
+            .linkWidth(1)
+            .linkDirectionalParticles(0)
+            .enableNodeDrag(false)
+            .nodeLabel('name');
 
-        const initialCameraPosition = new THREE.Vector3(0, 0, 8);
-        const initialTarget = new THREE.Vector3(0, 0, 0);
+        const controls = Graph.controls();
+        controls.rotateSpeed = 0.5;
+        controls.zoomSpeed = 0.5;
+        controls.panSpeed = 0.25;
 
-        function initScene() {
-            scene = new THREE.Scene();
+        Graph.cameraPosition({ x: 0, y: 0, z: 50 });
 
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.copy(initialCameraPosition);
+        const fileInput = document.getElementById('fileInput');
+        const resetCamera = document.getElementById('resetCameraBtn');
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
+        resetCamera.addEventListener('click', () => {
+            Graph.cameraPosition({ x: 0, y: 0, z: 50 });
+        });
 
-            controls = new OrbitControls(camera, renderer.domElement);
-            controls.target.copy(initialTarget);
-            controls.update();
-
-            const axesHelper = new THREE.AxesHelper(0.2);
-            scene.add(axesHelper);
-
-            window.addEventListener('resize', onWindowResize);
-        }
-
-        function createTextTexture(text) {
-            const fontSize = 16;
-
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            ctx.font = `bold ${fontSize}px Arial`;
-
-            const textWidth = ctx.measureText(text).width;
-            canvas.width = textWidth;
-            canvas.height = fontSize;
-
-            ctx.font = `bold ${fontSize}px Arial`;
-            ctx.fillStyle = 'white';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-
-            ctx.fillText(text, textWidth / 2, fontSize / 2);
-            return new THREE.CanvasTexture(canvas);
-        }
-
-        function createGraph(nodes, edges) {
-            const sphereGeo = new THREE.SphereGeometry(0.2, 16, 16);
-            const sphereMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
-            const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
-
-            nodes.forEach(node => {
-                const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-                sphere.position.copy(node.pos);
-                scene.add(sphere);
-
-                const texture = createTextTexture(node.name);
-                const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
-                label.position.copy(node.pos).add(new THREE.Vector3(0, 0.4, 0));
-                label.scale.set(texture.image.width / 100, texture.image.height / 100, 1);
-                scene.add(label);
-            });
-
-            edges.forEach(([a, b]) => {
-                const edgeGeo = new THREE.BufferGeometry().setFromPoints([nodes[a].pos, nodes[b].pos]);
-                scene.add(new THREE.Line(edgeGeo, edgeMat));
-            });
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-
-        function resetCamera() {
-            const duration = 1000;
-            const startTime = performance.now();
-            const startPos = camera.position.clone();
-            const startTarget = controls.target.clone();
-            controls.enabled = false;
-
-            function animate(time) {
-                const t = Math.min((time - startTime) / duration, 1);
-
-                camera.position.lerpVectors(startPos, initialCameraPosition, t);
-                controls.target.lerpVectors(startTarget, initialTarget, t);
-                controls.update();
-
-                if (t < 1) requestAnimationFrame(animate);
-                else controls.enabled = true;
-            }
-
-            requestAnimationFrame(animate);
-        }
-
-        function parseFriendsGraph(data) {
-            const nodeMap = new Map();
-            const edges = [];
-
-            (function traverse(person) {
-                nodeMap.set(person.id, { id: person.id, name: person.name });
-                person.friends.forEach(f => {
-                    nodeMap.set(f.id, { id: f.id, name: f.name });
-                    edges.push({ source: person.id, target: f.id });
-                    traverse(f);
-                });
-            })(data);
-
-            const nodes = Array.from(nodeMap.values());
-
-            d3.forceSimulation(nodes)
-                .force("link", d3.forceLink(edges).id(d => d.id).distance(25).strength(1))
-                .force("charge", d3.forceManyBody().strength(-80))
-                .force("collide", d3.forceCollide(0.4))
-                .force("center", d3.forceCenter(0, 0))
-                .stop()
-                .tick(300);
-
-            const scale = 0.1;
-            nodes.forEach(n => n.pos = new THREE.Vector3(n.x * scale, n.y * scale, (Math.random() - 0.5) * 5));
-
-            const idToIndex = new Map(nodes.map((n, i) => [n.id, i]));
-            const indexedEdges = edges.map(e => [
-                idToIndex.get(e.source.id ?? e.source),
-                idToIndex.get(e.target.id ?? e.target)
-            ]);
-
-            return { nodes, edges: indexedEdges };
-        }
-
-        // File handler
-        document.getElementById('fileInput').addEventListener('change', e => {
+        fileInput.addEventListener('change', e => {
             const file = e.target.files[0];
             if (!file) return;
+
             const reader = new FileReader();
             reader.onload = ev => {
-                const { nodes, edges } = parseFriendsGraph(JSON.parse(ev.target.result));
-                scene.clear();
-                scene.add(new THREE.AxesHelper(0.2));
-                createGraph(nodes, edges);
+                const rawData = JSON.parse(ev.target.result);
+                const nodes = new Map();
+                const links = [];
+
+                (function traverse(person) {
+                    if (!nodes.has(person.id)) nodes.set(person.id, { id: person.id, name: person.name });
+                    person.friends?.forEach(f => {
+                        if (!nodes.has(f.id)) nodes.set(f.id, { id: f.id, name: f.name });
+                        links.push({ source: person.id, target: f.id });
+                        traverse(f);
+                    });
+                })(rawData);
+
+                Graph.graphData({ nodes: Array.from(nodes.values()), links });
             };
             reader.readAsText(file);
         });
-
-        initScene();
-        animate();
-        document.getElementById('resetCameraBtn').addEventListener('click', resetCamera);
     </script>
 </body>
 
