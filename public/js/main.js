@@ -116,6 +116,52 @@ function initGUIControls(graph) {
         });
 }
 
+function handleFileInput(graph, file) {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+        let rawData;
+        try {
+            rawData = JSON.parse(ev.target.result);
+        } catch (err) {
+            alert("Invalid JSON file. Please upload a valid JSON.");
+            return;
+        }
+
+        const nodes = new Map();
+        const links = [];
+
+        function traverseIterative(rootPerson) {
+            const stack = [{ person: rootPerson, depth: 0 }];
+            while (stack.length > 0) {
+                const { person, depth } = stack.pop();
+                if (depth > config.maxFriendDepth) continue;
+
+                if (!nodes.has(person.id)) {
+                    nodes.set(person.id, { id: person.id, name: person.name, isRoot: depth === 0 });
+                }
+
+                if (person.friends && Array.isArray(person.friends)) {
+                    for (const f of person.friends) {
+                        if (!nodes.has(f.id)) nodes.set(f.id, { id: f.id, name: f.name });
+                        links.push({ source: person.id, target: f.id });
+                        stack.push({ person: f, depth: depth + 1 });
+                    }
+                }
+            }
+        }
+
+        traverseIterative(rawData);
+
+        graph.graphData({
+            nodes: Array.from(nodes.values()),
+            links
+        });
+    };
+    reader.readAsText(file);
+}
+
 function eventListeners(graph) {
     const searchInput = globalVars.searchCtrl.domElement.querySelector('input');
     const fileInput = document.getElementById("fileInput");
@@ -141,46 +187,7 @@ function eventListeners(graph) {
         const file = e.target.files[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = ev => {
-            let rawData;
-            try {
-                rawData = JSON.parse(ev.target.result);
-            } catch (err) {
-                alert("Invalid JSON file. Please upload a valid JSON.");
-                return;
-            }
-            const nodes = new Map();
-            const links = [];
-
-            function traverseIterative(rootPerson) {
-                const stack = [{ person: rootPerson, depth: 0 }];
-                while (stack.length > 0) {
-                    const { person, depth } = stack.pop();
-                    if (depth > config.maxFriendDepth) continue;
-
-                    if (!nodes.has(person.id)) {
-                        nodes.set(person.id, { id: person.id, name: person.name, isRoot: depth === 0 });
-                    }
-
-                    if (person.friends && Array.isArray(person.friends)) {
-                        for (const f of person.friends) {
-                            if (!nodes.has(f.id)) nodes.set(f.id, { id: f.id, name: f.name });
-                            links.push({ source: person.id, target: f.id });
-                            stack.push({ person: f, depth: depth + 1 });
-                        }
-                    }
-                }
-            }
-
-            traverseIterative(rawData);
-
-            graph.graphData({
-                nodes: Array.from(nodes.values()),
-                links
-            });
-        };
-        reader.readAsText(file);
+        handleFileInput(graph, file);
     });
 
     window.addEventListener('resize', () => {
@@ -192,4 +199,8 @@ function eventListeners(graph) {
 document.addEventListener("DOMContentLoaded", () => {
     initGUIControls(Graph);
     eventListeners(Graph);
+
+    fetch("../../users_data_deep.json")
+        .then(res => res.blob())
+        .then(blob => handleFileInput(Graph, new File([blob], "users_data_deep.json")));
 });
