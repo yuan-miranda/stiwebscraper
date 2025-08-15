@@ -151,7 +151,6 @@ function handleFileInput(graph, file) {
                 }
             }
         }
-
         traverseIterative(rawData);
 
         graph.graphData({
