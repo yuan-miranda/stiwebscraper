@@ -8,9 +8,16 @@ from urllib.parse import urlparse
 import time
 import json
 from collections import deque
+import os
+from dotenv import load_dotenv
 
-EMAIL = "miranda.339829@baliuag.sti.edu.ph"
-PASSWORD = "watdapak234_"
+load_dotenv()
+EMAIL = os.getenv("EMAIL", "")
+PASSWORD = os.getenv("PASSWORD", "")
+
+if not EMAIL.strip() or not PASSWORD.strip():
+    print("Email and password must be set in the .env file and cannot be empty or whitespace.")
+    exit(1)
 
 driver = webdriver.Firefox()
 wait = WebDriverWait(driver, 16)

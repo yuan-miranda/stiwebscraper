@@ -4,92 +4,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>STI F-line with 3D Force Graph</title>
+    <title>STI F-line</title>
     <style>
-        body {
+        * {
             margin: 0;
-        }
-
-        #3d-graph {
-            width: 100vw;
-            height: 100vh;
-            display: block;
-        }
-
-        #fileInput,
-        #resetCameraBtn {
-            position: fixed;
-            bottom: 10px;
-            padding: 5px 10px;
-            border-radius: 5px;
-            background: #fff;
-            border: 1px solid #ccc;
-            cursor: pointer;
-            z-index: 1;
-        }
-
-        #fileInput {
-            left: 10px;
-        }
-
-        #resetCameraBtn {
-            right: 10px;
+            padding: 0;
+            box-sizing: border-box;
         }
     </style>
 </head>
 
 <body>
-    <input type="file" id="fileInput" accept=".json">
-    <button id="resetCameraBtn">Reset Camera</button>
+    <input type="file" id="fileInput" accept=".json" style="display: none;" />
     <div id="3d-graph"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/3d-force-graph"></script>
-    <script>
-        const Graph = ForceGraph3D()(document.getElementById('3d-graph'))
-            .nodeColor(node => node.name ? 'white' : 'red')
-            .linkWidth(1)
-            .linkDirectionalParticles(0)
-            .enableNodeDrag(false)
-            .nodeLabel('name');
-
-        const controls = Graph.controls();
-        controls.rotateSpeed = 0.5;
-        controls.zoomSpeed = 0.5;
-        controls.panSpeed = 0.25;
-
-        Graph.cameraPosition({ x: 0, y: 0, z: 50 });
-
-        const fileInput = document.getElementById('fileInput');
-        const resetCamera = document.getElementById('resetCameraBtn');
-
-        resetCamera.addEventListener('click', () => {
-            Graph.cameraPosition({ x: 0, y: 0, z: 50 });
-        });
-
-        fileInput.addEventListener('change', e => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = ev => {
-                const rawData = JSON.parse(ev.target.result);
-                const nodes = new Map();
-                const links = [];
-
-                (function traverse(person) {
-                    if (!nodes.has(person.id)) nodes.set(person.id, { id: person.id, name: person.name });
-                    person.friends?.forEach(f => {
-                        if (!nodes.has(f.id)) nodes.set(f.id, { id: f.id, name: f.name });
-                        links.push({ source: person.id, target: f.id });
-                        traverse(f);
-                    });
-                })(rawData);
-
-                Graph.graphData({ nodes: Array.from(nodes.values()), links });
-            };
-            reader.readAsText(file);
-        });
-    </script>
+    <script src="//cdn.jsdelivr.net/npm/3d-force-graph"></script>
+    <script type="module" src="./js/main.js"></script>
 </body>
 
 </html>
