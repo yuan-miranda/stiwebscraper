@@ -199,7 +199,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initGUIControls(Graph);
     eventListeners(Graph);
 
-    fetch("../../users_data_deep.json")
+    fetch("/users_data_deep.json")
         .then(res => res.blob())
         .then(blob => handleFileInput(Graph, new File([blob], "users_data_deep.json")));
 });
