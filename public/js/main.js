@@ -9,6 +9,8 @@ const config = {
 };
 
 const globalVars = {
+    loadedNodes: null,
+    settings: null,
     toggleCtrl: null,
     searchCtrl: null,
     resetCameraCtrl: null,
@@ -39,6 +41,22 @@ function focusOnNode(node) {
         : { x: 0, y: 0, z: distance };
 
     Graph.cameraPosition(newPos, node, 500);
+}
+
+function searchNodes(searchTerm) {
+    if (!globalVars.settings) return;
+
+    globalVars.settings.searchTerm = searchTerm.trim().toLowerCase();
+    if (!globalVars.settings.searchTerm) {
+        Graph.zoomToFit(400);
+        return;
+    }
+
+    const match = Graph.graphData().nodes.find(
+        node => typeof node.name === 'string' && node.name.toLowerCase().includes(globalVars.settings.searchTerm)
+    );
+    if (match) focusOnNode(match);
+    else Graph.zoomToFit(400);
 }
 
 function initGUIControls(graph) {
@@ -72,21 +90,12 @@ function initGUIControls(graph) {
             document.getElementById("fileInput").click();
         }
     };
+    globalVars.settings = settings;
 
     const gui = new GUI();
 
     globalVars.searchCtrl = gui.add(settings, 'searchTerm').onChange(value => {
-        settings.searchTerm = value.trim().toLowerCase();
-        if (!settings.searchTerm) {
-            Graph.zoomToFit(400);
-            return;
-        }
-
-        const match = graph.graphData().nodes.find(
-            node => typeof node.name === 'string' && node.name.toLowerCase().includes(settings.searchTerm)
-        );
-        if (match) focusOnNode(match);
-        else Graph.zoomToFit(400);
+        searchNodes(value);
     }).name('Search (Ctrl + k)');
 
     globalVars.resetCameraCtrl = gui.add(settings, 'resetCamera').name('Reset Camera (r)');
@@ -98,9 +107,13 @@ function initGUIControls(graph) {
     controls.add(settings, 'maxFriendDepth', 2, 128, 1)
         .step(1)
         .onChange(value => {
-            const snapped = value > 0 ? Math.pow(2, Math.round(Math.log2(value))) : 2;
+            const allowed = [2, 4, 8, 16, 32, 48, 64, 128];
+            const snapped = allowed.reduce((prev, curr) =>
+                Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
+            );
             settings.maxFriendDepth = snapped;
             config.maxFriendDepth = snapped;
+            if (globalVars.loadedNodes) createGraph(graph, globalVars.loadedNodes);
         });
 
     controls.add(settings, 'nodeResolution', 0, 128, 1)
@@ -116,6 +129,37 @@ function initGUIControls(graph) {
         });
 }
 
+function createGraph(graph, data) {
+    const nodes = new Map();
+    const links = [];
+
+    function traverseIterative(rootPerson) {
+        const stack = [{ person: rootPerson, depth: 0 }];
+        while (stack.length > 0) {
+            const { person, depth } = stack.pop();
+            if (depth > config.maxFriendDepth) continue;
+
+            if (!nodes.has(person.id)) {
+                nodes.set(person.id, { id: person.id, name: person.name, isRoot: depth === 0 });
+            }
+
+            if (person.friends && Array.isArray(person.friends)) {
+                for (const f of person.friends) {
+                    if (!nodes.has(f.id)) nodes.set(f.id, { id: f.id, name: f.name });
+                    links.push({ source: person.id, target: f.id });
+                    stack.push({ person: f, depth: depth + 1 });
+                }
+            }
+        }
+    }
+    traverseIterative(data);
+
+    graph.graphData({
+        nodes: Array.from(nodes.values()),
+        links
+    });
+}
+
 function handleFileInput(graph, file) {
     if (!file) return;
 
@@ -124,39 +168,12 @@ function handleFileInput(graph, file) {
         let rawData;
         try {
             rawData = JSON.parse(ev.target.result);
+            globalVars.loadedNodes = rawData;
+            createGraph(graph, globalVars.loadedNodes);
         } catch (err) {
             alert("Invalid JSON file. Please upload a valid JSON.");
             return;
         }
-
-        const nodes = new Map();
-        const links = [];
-
-        function traverseIterative(rootPerson) {
-            const stack = [{ person: rootPerson, depth: 0 }];
-            while (stack.length > 0) {
-                const { person, depth } = stack.pop();
-                if (depth > config.maxFriendDepth) continue;
-
-                if (!nodes.has(person.id)) {
-                    nodes.set(person.id, { id: person.id, name: person.name, isRoot: depth === 0 });
-                }
-
-                if (person.friends && Array.isArray(person.friends)) {
-                    for (const f of person.friends) {
-                        if (!nodes.has(f.id)) nodes.set(f.id, { id: f.id, name: f.name });
-                        links.push({ source: person.id, target: f.id });
-                        stack.push({ person: f, depth: depth + 1 });
-                    }
-                }
-            }
-        }
-        traverseIterative(rawData);
-
-        graph.graphData({
-            nodes: Array.from(nodes.values()),
-            links
-        });
     };
     reader.readAsText(file);
 }
@@ -175,6 +192,13 @@ function eventListeners(graph) {
             e.preventDefault();
             if (document.activeElement === searchInput) searchInput.blur();
             else searchInput.focus();
+        }
+    });
+
+    searchInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            searchNodes(searchInput.value);
         }
     });
 
