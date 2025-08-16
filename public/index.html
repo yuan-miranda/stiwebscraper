@@ -18,6 +18,20 @@
         </a>
     </div>
 
+    <script>
+        const THREE_VERSION = "0.179.1";
+        const importMap = {
+            "imports": {
+                "three": `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/build/three.module.js`,
+                "three/addons/": `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/examples/jsm/`
+            }
+        };
+
+        document.head.appendChild(Object.assign(document.createElement('script'), {
+            type: 'importmap',
+            textContent: JSON.stringify(importMap)
+        }));
+    </script>
     <script src="//cdn.jsdelivr.net/npm/3d-force-graph"></script>
     <script type="module" src="./js/main.js"></script>
 </body>

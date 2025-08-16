@@ -1,9 +1,10 @@
+import * as THREE from 'three';
 import { GUI } from 'https://esm.sh/dat.gui';
 
 const config = {
     linkWidth: 4,
     nodeColor: node => node.isRoot ? 'gold' : node.name ? 'white' : 'red',
-    enableNodeDrag: false,
+    enableNodeDrag: true,
     nodeResolution: 0,
     linkResolution: 0,
     pixelRatio: 1,
@@ -11,6 +12,7 @@ const config = {
 };
 
 const globalVars = {
+    simTimeout: null,
     loadedNodes: null,
     settings: null,
     toggleCtrl: null,
@@ -29,9 +31,22 @@ function initForceGraph3d(element) {
         .linkWidth(config.linkWidth)
         .enableNodeDrag(config.enableNodeDrag)
         .nodeResolution(config.nodeResolution > 0 ? config.nodeResolution : undefined)
+        .nodeThreeObjectExtend(true)
+        .nodeThreeObject(() => {
+            const radius = 24;
+            const geometry = new THREE.SphereGeometry(radius, 3, 2);
+            const material = new THREE.MeshBasicMaterial({
+                transparent: true,
+                opacity: 0,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            return mesh;
+        })
         .cooldownTicks(Infinity)
         .d3AlphaDecay(0)
-        .onEngineStop(() => Graph.zoomToFit(400))
+        .onEngineStop(() => {
+        })
         .onNodeClick(node => focusOnNode(node));
 }
 
@@ -84,6 +99,7 @@ function initGUIControls(graph) {
                 }, 500);
             } else {
                 graph.cooldownTicks(0);
+                settings.resetCamera();
                 clearInterval(settings.simInterval);
                 settings.simInterval = null;
             }
@@ -203,10 +219,14 @@ function eventListeners(graph) {
 
 
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') searchInput.value = '';
-        if (e.key === 'f') fileInput.click();
+        if (e.key === 'Escape' && document.activeElement === searchInput) searchInput.value = '';
+        if (e.key === 'f' && document.activeElement !== searchInput) fileInput.click();
         if (e.key === 'r' && document.activeElement !== searchInput) resetCamera.click();
-        if (e.key === 's') globalVars.settings.toggleSimulation();
+        if (e.key === 's' && document.activeElement !== searchInput) {
+            clearTimeout(globalVars.simTimeout);
+            globalVars.simTimeout = null;
+            globalVars.settings.toggleSimulation();
+        }
         if (e.ctrlKey && e.key === 'k') {
             e.preventDefault();
             if (document.activeElement === searchInput) searchInput.blur();
@@ -243,8 +263,8 @@ document.addEventListener("DOMContentLoaded", () => {
     eventListeners(Graph);
 
     globalVars.settings.toggleSimulation(true);
-    setTimeout(() => {
-        if (!globalVars.settings.keepSimulationAlive) globalVars.settings.toggleSimulation(false);
+    globalVars.simTimeout = setTimeout(() => {
+        if (globalVars.settings.keepSimulationAlive) globalVars.settings.toggleSimulation(false);
     }, 5000);
 
     fetch("/users_data_deep.json")
