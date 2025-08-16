@@ -11,12 +11,27 @@
             padding: 0;
             box-sizing: border-box;
         }
+
+        .link-actions {
+            position: fixed;
+            margin: 1rem;
+            z-index: 1;
+            bottom: 10px;
+            right: 10px;
+            filter: invert(1);
+        }
     </style>
 </head>
 
 <body>
     <input type="file" id="fileInput" accept=".json" style="display: none;" />
     <div id="3d-graph"></div>
+
+    <div class="link-actions">
+        <a href="https://github.com/yuan-miranda/stiwebscraper" target="_blank" aria-label="GitHub Repository">
+            <img src="media/icon/github-mark.svg" alt="GitHub" width="32" height="32" title="GitHub Repository">
+        </a>
+    </div>
 
     <script src="//cdn.jsdelivr.net/npm/3d-force-graph"></script>
     <script type="module" src="./js/main.js"></script>
