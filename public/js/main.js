@@ -5,6 +5,8 @@ const config = {
     nodeColor: node => node.isRoot ? 'gold' : node.name ? 'white' : 'red',
     enableNodeDrag: false,
     nodeResolution: 0,
+    linkResolution: 0,
+    pixelRatio: 1,
     maxFriendDepth: 32
 };
 
@@ -18,6 +20,7 @@ const globalVars = {
 };
 
 const Graph = initForceGraph3d(document.getElementById("3d-graph"));
+Graph.renderer().setPixelRatio(config.pixelRatio);
 
 function initForceGraph3d(element) {
     return ForceGraph3D({ controlType: 'orbit' })(element)
@@ -65,8 +68,11 @@ function initGUIControls(graph) {
         keepSimulationAlive: false,
         maxFriendDepth: config.maxFriendDepth,
         nodeResolution: config.nodeResolution,
-        toggleSimulation: () => {
-            settings.keepSimulationAlive = !settings.keepSimulationAlive;
+        linkResolution: config.linkResolution,
+        pixelRatio: config.pixelRatio,
+        toggleSimulation: (state) => {
+            if (state === undefined) settings.keepSimulationAlive = !settings.keepSimulationAlive;
+            else settings.keepSimulationAlive = state;
 
             const li = globalVars.toggleCtrl.__li;
             li.style.borderLeft = settings.keepSimulationAlive ? '3px solid green' : '3px solid #e61d5f';
@@ -102,31 +108,43 @@ function initGUIControls(graph) {
     globalVars.fileCtrl = gui.add(settings, 'fileInput').name('Upload File (f)');
 
     const controls = gui.addFolder('Nodes');
-    globalVars.toggleCtrl = controls.add(settings, 'toggleSimulation');
+    globalVars.toggleCtrl = controls.add(settings, 'toggleSimulation').name('Toggle Simulation (s)');
 
-    controls.add(settings, 'maxFriendDepth', 2, 128, 1)
+    controls.add(settings, 'maxFriendDepth', 1, 128, 1)
         .step(1)
         .onChange(value => {
-            const allowed = [2, 4, 8, 16, 32, 48, 64, 128];
-            const snapped = allowed.reduce((prev, curr) =>
-                Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
-            );
-            settings.maxFriendDepth = snapped;
-            config.maxFriendDepth = snapped;
+            settings.maxFriendDepth = value;
+            config.maxFriendDepth = value;
             if (globalVars.loadedNodes) createGraph(graph, globalVars.loadedNodes);
         });
 
     controls.add(settings, 'nodeResolution', 0, 128, 1)
         .step(1)
         .onChange(value => {
-            const allowed = [0, 1, 8, 16, 128];
-            const snapped = allowed.reduce((prev, curr) =>
-                Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
-            );
+            const snapped = [0, ...genPow2Array(8)]
+                .reduce((prev, curr) => Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev);
+
             settings.nodeResolution = snapped;
             config.nodeResolution = snapped;
+
+            settings.linkResolution = snapped;
+            config.linkResolution = snapped;
+
             graph.nodeResolution(config.nodeResolution > 0 ? config.nodeResolution : undefined);
+            graph.linkResolution(config.linkResolution > 0 ? config.linkResolution : undefined);
         });
+
+    controls.add(settings, 'pixelRatio', 0, 1, 0.01)
+        .step(0.01)
+        .onChange(value => {
+            settings.pixelRatio = value;
+            config.pixelRatio = value;
+            graph.renderer().setPixelRatio(value);
+        });
+}
+
+function genPow2Array(length) {
+    return Array.from({ length }, (_, i) => Math.pow(2, i));
 }
 
 function createGraph(graph, data) {
@@ -188,6 +206,7 @@ function eventListeners(graph) {
         if (e.key === 'Escape') searchInput.value = '';
         if (e.key === 'f') fileInput.click();
         if (e.key === 'r' && document.activeElement !== searchInput) resetCamera.click();
+        if (e.key === 's') globalVars.settings.toggleSimulation();
         if (e.ctrlKey && e.key === 'k') {
             e.preventDefault();
             if (document.activeElement === searchInput) searchInput.blur();
@@ -222,6 +241,11 @@ function eventListeners(graph) {
 document.addEventListener("DOMContentLoaded", () => {
     initGUIControls(Graph);
     eventListeners(Graph);
+
+    globalVars.settings.toggleSimulation(true);
+    setTimeout(() => {
+        if (!globalVars.settings.keepSimulationAlive) globalVars.settings.toggleSimulation(false);
+    }, 5000);
 
     fetch("/users_data_deep.json")
         .then(res => res.blob())
